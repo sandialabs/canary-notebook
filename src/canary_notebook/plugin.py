@@ -34,24 +34,31 @@ DEFAULT_CELL_TIMEOUT = 2000
 
 @canary.hookimpl
 def canary_addoption(parser: canary.Parser) -> None:
-    def addoption(*args, **kwargs):
-        parser.add_argument(*args, group="canary notebook", command="run", **kwargs)
+    def addoption(name, **kwargs):
+        parser.add_argument(
+            f"--notebook-{name}",
+            dest=f"nb_{name.replace('-', '_')}",
+            group="canary notebook",
+            command="run",
+            **kwargs,
+        )
 
     addoption(
-        "--notebook-config",
+        "config",
+        metavar="FILE",
         help="YAML config file with regex expressions to sanitize the outputs.",
     )
 
     addoption(
-        "--notebook-current-env",
+        "current-env",
         action="store_true",
-        dest="notebook_use_current_env",
         help="Use a python kernel in the same environment that canary was launched from. "
         "Without this flag, the kernel stored in the notebook is used by default.",
     )
 
     addoption(
-        "--notebook-kernel-name",
+        "kernel-name",
+        metavar="NAME",
         action="store",
         default=None,
         help="Use the named kernel. If a kernel is not named, the kernel stored in the "
@@ -59,22 +66,30 @@ def canary_addoption(parser: canary.Parser) -> None:
     )
 
     addoption(
-        "--notebook-cell-timeout",
+        "cell-timeout",
+        metavar="T",
         action=TimeoutFlag,
-        help="Timeout for cell execution, in seconds.",
+        help="Timeout for cell execution, in seconds (alias for --timeout nb-cell:T)",
     )
 
     addoption(
-        "--notebook-kernel-startup-timeout",
+        "kernel-startup-timeout",
+        metavar="T",
         action=TimeoutFlag,
-        help="Timeout for kernel startup, in seconds.",
+        help="Timeout for kernel startup, in seconds - alias for --timeout nb-kernel-startup=T",
+    )
+
+    addoption(
+        "dont-compare-outputs",
+        action="store_true",
+        help="Don't compare notebook cell outputs",
     )
 
 
 class TimeoutFlag(argparse.Action):
     def __call__(self, parser, namespace, value, option_string=None):
         timeouts = getattr(namespace, "timeouts", None) or {}
-        type = option_string.lstrip("-").replace("-", "_")
+        type = option_string.replace("--notebook-", "nb-").rstrip("-timeout")
         timeouts[type] = float(value)
         setattr(namespace, "timeouts", timeouts)
 
@@ -86,15 +101,15 @@ config_file_schema = canary.schema.Schema(
 
 @canary.hookimpl
 def canary_configure(config: canary.Config):
-    if config.getoption("notebook_kernel_name") and config.getoption("notebook_use_current_env"):
+    if config.getoption("nb_kernel_name") and config.getoption("nb_current_env"):
         raise ValueError(
             "options '--notebook-current-env' and '--notebook-kernel-name' are mutually exclusive."
         )
-    if file := config.getoption("notebook_config"):
+    if file := config.getoption("nb_config"):
         if not os.path.isabs(file):
             file = os.path.join(config.invocation_dir, file)
         if not os.path.exists(file):
-            f = config.getoption("notebook_config")
+            f = config.getoption("nb_config")
             raise FileNotFoundError(f)
         with open(file, "r") as fh:
             data = yaml.safe_load(fh)
@@ -201,14 +216,14 @@ class IPyNbTestCase(canary.TestCase):
     @staticmethod
     def start_kernel(file: str, kernelspec: dict[str, Any]) -> RunningKernel:
         name: str
-        if canary.config.getoption("notebook_use_current_env"):
+        if canary.config.getoption("nb_current_env"):
             name = CURRENT_ENV_KERNEL_NAME
-        elif canary.config.getoption("notebook_kernel_name"):
-            name = canary.config.getoption("notebook_kernel_name")
+        elif canary.config.getoption("nb_kernel_name"):
+            name = canary.config.getoption("nb_kernel_name")
         else:
             name = kernelspec.get("name", "python")
         timeout: float = DEFAULT_KERNEL_STARTUP_TIMEOUT
-        if user_defined_timeout := canary.config.get("config:timeout:kernel_startup_timeout"):
+        if user_defined_timeout := canary.config.get("config:timeout:nb-kernel-startup"):
             timeout = user_defined_timeout
         kernel = RunningKernel(name, cwd=os.path.dirname(file), startup_timeout=timeout)
         return kernel
@@ -217,7 +232,7 @@ class IPyNbTestCase(canary.TestCase):
         # Read through the specified notebooks and load the data
         # (which is in json format)
         cells: list[IPyNbCell] = []
-        compare_outputs = not canary.config.getoption("notebook_dont_compare_outputs")
+        compare_outputs = not canary.config.getoption("nb_dont_compare_outputs")
         sanitize_patterns = self.read_sanitize_patterns()
         cell_num = 0
         for cell in nb.cells:
@@ -254,7 +269,7 @@ class IPyNbTestCase(canary.TestCase):
 
     def run(self, qsize: int = 1, qrank: int = 0, attempt: int = 0) -> None:
         self.start = time.time()
-        timeout = canary.config.get("config:timeout:cell_timeout") or DEFAULT_CELL_TIMEOUT
+        timeout = canary.config.get("config:timeout:nb-cell") or DEFAULT_CELL_TIMEOUT
         nb = nbformat.read(self.file, as_version=4)
         kernel = self.start_kernel(self.file, nb.metadata.get("kernelspec", {}))
         with warnings.catch_warnings(record=True) as ws:
