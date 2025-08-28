@@ -34,17 +34,14 @@ classifiers = [
 ]
 
 dependencies = [
-    "canary-wm",
+    "canary-wm>=25.8.28",
     "jupyter_client",
     "nbformat",
     "ipykernel",
     "yaml"
 ]
 
-optional-dependencies.dev = [
-    "mypy",
-    "ruff"
-]
+optional-dependencies.dev = ["mypy", "ruff"]
 
 # urls.Documentation = "https://canary-wm.readthedocs.io/en/production/"
 urls.Issues = "https://github.com/sandialabs/canary-notebook/issues"
