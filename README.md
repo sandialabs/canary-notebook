@@ -13,7 +13,7 @@ The `canary-notebook` extension finds and executes Jupyter notebooks.  Each note
 To install Canary Notebook, you can use pip:
 
 ```console
-pip install canary-notebook
+python3 -m pip install git+https://github.com/sandialabs/canary-notebook.git
 ```
 
 to install the latest version:
@@ -21,7 +21,7 @@ to install the latest version:
 ```console
 git clone git@cee-gitlab.sandia.gov:sandialabs/canary-notebook
 cd canary-notebook
-pip install [-e] .
+python3 -m pip install [-e] .
 ```
 
 ## Usage
