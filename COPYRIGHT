@@ -1,0 +1,26 @@
+Intellectual Property Notice
+============================
+
+Canary is licensed under the MIT license.
+
+SPDX usage
+------------
+
+Individual files contain SPDX tags instead of the full license text.
+This enables machine processing of license information based on the SPDX
+License Identifiers that are available here: https://spdx.org/licenses/
+
+Files that are dual-licensed as Apache-2.0 OR MIT contain the following
+text in the license header:
+
+    SPDX-License-Identifier: MIT
+
+External Packages
+-----------------
+
+Canary bundles some external modules/packages. These packages are covered by various permissive
+licenses. A summary lising follows. See the license included with each package for full details.
+
+ModuleName: kernel.py
+ModuleHomePage: https://github.com/nteract/nbval
+ModuleLicenseDeclared: self

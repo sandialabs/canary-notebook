@@ -1,0 +1,92 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+
+requires = [ "setuptools>=64", "setuptools-scm[toml]>=6.2.3" ]
+
+[project]
+name = "canary-notebook"
+description = "A canary plugin for testing Jupyter notebooks"
+version = "0.1.0"
+readme = "README.md"
+keywords = [ "test", "unittest" ]
+license = { "file" = "LICENSE" }
+authors = [
+    { name = "Tim Fuller" },
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 6 - Mature",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "canary-wm",
+    "jupyter_client",
+    "nbformat",
+    "ipykernel",
+    "coverage"
+]
+
+optional-dependencies.dev = [
+    "mypy",
+    "pydata-sphinx-theme",
+    "pytest",
+    "ruff",
+    "sphinx",
+    "sphinx-design",
+    "xmlschema",
+]
+
+# urls.Documentation = "https://canary-wm.readthedocs.io/en/production/"
+urls.Issues = "https://github.com/sandialabs/canary-notebook/issues"
+urls.Repository = "https://github.com/sandialabs/canary-notebook"
+
+[project.entry-points."canary"]
+canary_notebook = "canary_notebook.plugin"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+format.indent-style = "space"
+format.quote-style = "double"
+format.line-ending = "auto"
+format.skip-magic-trailing-comma = false
+format.docstring-code-line-length = "dynamic"
+format.docstring-code-format = false
+lint.select = [ "F", "I" ]
+lint.isort.force-single-line = true
+lint.ignore = [ "E731", "E741", "F841" ]
+
+[[tool.mypy.overrides]]
+module = "yaml"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "Queue"
+ignore_missing_imports = true
+
+[tool.check-wheel-contents]
+# W009: Wheel contains multiple toplevel library entries
+ignore = "W009"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = "mock"
+addopts = "-ra --durations=10"
+cache_dir = ".cache/pytest"
+python_files = "*.py"
+filterwarnings = ["ignore::DeprecationWarning"]

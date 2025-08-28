@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+.ipynb_checkpoints/
+/dist/
+**/build/
+*.egg-info
+.cache
+.pytest_cache
+.doit.db*
+.coverage*
+
+TestResults
+.canary_cache

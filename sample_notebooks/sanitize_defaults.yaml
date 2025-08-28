@@ -1,0 +1,14 @@
+notebook:
+  sanitize:
+  - regex: '\d\d\d\d-\d\d-\d\d'
+    replace: 'DATESTAMP'
+  - regex: '\d\d-\d\d-\d\d\d\d'
+    replace: 'DATESTAMP'
+  - regex: '\d\d:\d\d:\d\d'
+    replace: 'TIMESTAMP'
+  - regex: '\d\d:\d\d'
+    replace: 'TIMESTAMP'
+  - regex: '(<[a-zA-Z_][0-9a-zA-Z_.]* at )(0x[0-9a-fA-F]+)(>)'
+    replace: '\1MEMORY_ADDRESS\3'
+  - regex: '(Figure size )\d+x\d+( with \d+ Axes)'
+    replace: '\1WIDTHxHEIGHT\2'
