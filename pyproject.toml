@@ -38,7 +38,7 @@ dependencies = [
     "jupyter_client",
     "nbformat",
     "ipykernel",
-    "yaml"
+    "pyyaml"
 ]
 
 optional-dependencies.dev = ["mypy", "ruff"]
