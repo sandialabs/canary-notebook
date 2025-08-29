@@ -467,8 +467,7 @@ class IPyNbCell:
         ***************************************************** """
 
     def execute(
-        self, kernel: RunningKernel, timeout: float = DEFAULT_CELL_TIMEOUT, xfail: bool = False
-    ) -> None:
+        self, kernel: RunningKernel, timeout: float = DEFAULT_CELL_TIMEOUT) -> None:
         """
         Run test is called by canary for each of these nodes that are
         collected i.e. a notebook cell. Runs all the cell tests in one
