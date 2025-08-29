@@ -339,10 +339,10 @@ class IPyNbCell:
         """called when self.runtest() raises an exception."""
         if isinstance(exc, NbCellError):
             msg = io.StringIO()
-            msg.write("@R*{Notebook cell execution failed}\n")
-            msg.write("@B*{Cell %d: %s\n\nInput:\n}%s\n" % (exc.cell_num, str(exc), exc.source))
+            msg.write("@*R{Notebook cell execution failed}\n")
+            msg.write("@*B{Cell %d: %s\n\nInput:\n}%s\n" % (exc.cell_num, str(exc), exc.source))
             if exc.inner_traceback:
-                msg.write("@B*{Traceback:}\n%s\n" % exc.inner_traceback)
+                msg.write("@*B{Traceback:}\n%s\n" % exc.inner_traceback)
             return colorize(msg.getvalue())
         else:
             return "canary-notebook plugin exception: %s" % str(exc)
@@ -405,11 +405,11 @@ class IPyNbCell:
         test_keys = set(testing_outs)
 
         if ref_keys - test_keys:
-            msg = "@R*{Missing output fields from running code: %s}" % (ref_keys - test_keys)
+            msg = "@*R{Missing output fields from running code: %s}" % (ref_keys - test_keys)
             self.comparison_traceback.append(colorize(msg))
             return False
         elif test_keys - ref_keys:
-            msg = "@R*{Unexpected output fields from running code: %s}" % (test_keys - ref_keys)
+            msg = "@*R{Unexpected output fields from running code: %s}" % (test_keys - ref_keys)
             self.comparison_traceback.append(colorize(msg))
             return False
 
@@ -424,17 +424,17 @@ class IPyNbCell:
             if len(test_values) != len(ref_values):
                 # The number of outputs for a specific MIME type differs
                 msg = io.StringIO()
-                msg.write('@B*{dissimilar number of outputs for key "%s"}' % key)
-                msg.write("@R*{<<<<<<<<<<<< Reference outputs from ipynb file:}")
+                msg.write('@*B{dissimilar number of outputs for key "%s"}' % key)
+                msg.write("@*R{<<<<<<<<<<<< Reference outputs from ipynb file:}")
                 self.comparison_traceback.append(colorize(msg.getvalue()))
                 for val in ref_values:
                     self.comparison_traceback.append(_trim_base64(val))
                 self.comparison_traceback.append(
-                    colorize("@R*{============ disagrees with newly computed (test) output:}")
+                    colorize("@*R{============ disagrees with newly computed (test) output:}")
                 )
                 for val in test_values:
                     self.comparison_traceback.append(_trim_base64(val))
-                self.comparison_traceback.append(colorize("@R*{>>>>>>>>>>>>}"))
+                self.comparison_traceback.append(colorize("@*R{>>>>>>>>>>>>}"))
                 return False
 
             for ref_out, test_out in zip(ref_values, test_values):
@@ -451,17 +451,17 @@ class IPyNbCell:
         if isinstance(right, str):
             right = _trim_base64(right)
 
-        self.comparison_traceback.append(colorize("@B*{ mismatch '%s'}" % key))
+        self.comparison_traceback.append(colorize("@*B{ mismatch '%s'}" % key))
         # Fallback repr:
         self.comparison_traceback.append(
-            colorize("@R*{  <<<<<<<<<<<< Reference output from ipynb file:}")
+            colorize("@*R{  <<<<<<<<<<<< Reference output from ipynb file:}")
         )
         self.comparison_traceback.append(_indent(left))
         self.comparison_traceback.append(
-            colorize("@R*{  ============ disagrees with newly computed (test) output:}")
+            colorize("@*R{  ============ disagrees with newly computed (test) output:}")
         )
         self.comparison_traceback.append(_indent(right))
-        self.comparison_traceback.append(colorize("@R*{  >>>>>>>>>>>>}"))
+        self.comparison_traceback.append(colorize("@*R{  >>>>>>>>>>>>}"))
 
     """ *****************************************************
         ***************************************************** """
