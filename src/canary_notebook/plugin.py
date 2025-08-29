@@ -338,11 +338,13 @@ class IPyNbCell:
     def repr_failure(self, exc: BaseException) -> str:
         """called when self.runtest() raises an exception."""
         if isinstance(exc, NbCellError):
+            width: int = 88
             msg = io.StringIO()
-            msg.write("@*R{Notebook cell execution failed}\n")
-            msg.write("@*B{Cell %d: %s\n\nInput:\n}%s\n" % (exc.cell_num, str(exc), exc.source))
+            msg.write("=" * width)
+            msg.write("\n@*R{Notebook cell execution failed}\n")
+            msg.write("@*B{Cell %d: %s\nInput:}\n%s\n" % (exc.cell_num, str(exc), exc.source))
             if exc.inner_traceback:
-                msg.write("@*B{Traceback:}\n%s\n" % exc.inner_traceback)
+                msg.write("@*B{Traceback}:%s\n" % exc.inner_traceback)
             return colorize(msg.getvalue())
         else:
             return "canary-notebook plugin exception: %s" % str(exc)
@@ -466,8 +468,7 @@ class IPyNbCell:
     """ *****************************************************
         ***************************************************** """
 
-    def execute(
-        self, kernel: RunningKernel, timeout: float = DEFAULT_CELL_TIMEOUT) -> None:
+    def execute(self, kernel: RunningKernel, timeout: float = DEFAULT_CELL_TIMEOUT) -> None:
         """
         Run test is called by canary for each of these nodes that are
         collected i.e. a notebook cell. Runs all the cell tests in one
