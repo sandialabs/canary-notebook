@@ -16,6 +16,7 @@ from queue import Empty
 from typing import Any
 
 import canary
+from _canary.util.time import time_in_seconds
 
 # for reading notebook files
 import nbformat
@@ -128,24 +129,21 @@ def canary_generator(root: str, path: str | None) -> "IPyNbTestGenerator | None"
 
 def find_comment_markers(cellsource: str) -> dict[str, Any]:
     """Look through the cell source for comments which affect notebook's behaviour"""
+    known_comment_markers: tuple[str, ...] = (
+        "skip", "allow_failure", "check_output", "timeout", "raises",
+    )
     markers: dict[str, Any] = {}
     for line in cellsource.splitlines():
         line = line.strip()
         if line.startswith("#"):
             comment = line.lstrip("#").strip()
-            for match in re.findall(r"\[(.*?)\]", comment):
-                match = " ".join(match.split())
-                if match == "skip cell":
-                    type, value = "skip", True
-                elif match == "check output":
-                    type, value = "check", True
-                elif match == "ignore output":
-                    type, value = "check", False
-                elif match.startswith("raises:"):
-                    type, value = "raises", match[7:].strip()
-                else:
-                    warnings.warn(f"Unknown marker: [{match}]")
+            for type, value in re.findall(r"\[(\w+):\s*(.*?)\]", comment):
+                if type not in known_comment_markers:
+                    warnings.warn(f"Unknown marker: [{type}: {value}]")
                     continue
+                value = yaml.safe_load(value)
+                if type in ("timeout",):
+                    value = time_in_seconds(value)
                 markers[type] = value
     return markers
 
@@ -243,7 +241,7 @@ class IPyNbTestCase(canary.TestCase):
                 # should be checked or ignored. If it doesn't, use the default
                 # behaviour.
                 options = find_comment_markers(cell.source)
-                options.setdefault("check", compare_outputs)
+                options.setdefault("check_output", compare_outputs)
                 name = "Cell " + str(cell_num)
                 cell = IPyNbCell(
                     name,
@@ -269,7 +267,7 @@ class IPyNbTestCase(canary.TestCase):
 
     def run(self, qsize: int = 1, qrank: int = 0, attempt: int = 0) -> None:
         self.start = time.time()
-        timeout = canary.config.get("config:timeout:nb-cell") or DEFAULT_CELL_TIMEOUT
+        timeout = canary.config.get("config:timeout:nb-cell")
         nb = nbformat.read(self.file, as_version=4)
         kernel = self.start_kernel(self.file, nb.metadata.get("kernelspec", {}))
         with warnings.catch_warnings(record=True) as ws:
@@ -304,11 +302,13 @@ class IPyNbTestCase(canary.TestCase):
         if not errors:
             self.status.set("success")
         success = len(cells) - errors
-        self.stdout.write(f"==> {len(cells)} total cells, {success} pass, {errors} fail\n")
+        self.stdout.write(f"==> {len(cells)} total cells, {success} cells pass, {errors} fail\n")
         self.stdout.flush()
         self.returncode = 0 if not errors else 1
         self.stop = time.time()
         if summary := self.job_completion_summary(qrank, qsize, attempt):
+            if errors:
+                summary += f" [{success} cells pass, {errors} fail]"
             logging.emit(summary + "\n")
 
 
@@ -468,7 +468,7 @@ class IPyNbCell:
     """ *****************************************************
         ***************************************************** """
 
-    def execute(self, kernel: RunningKernel, timeout: float = DEFAULT_CELL_TIMEOUT) -> None:
+    def execute(self, kernel: RunningKernel, timeout: float | None = None) -> None:
         """
         Run test is called by canary for each of these nodes that are
         collected i.e. a notebook cell. Runs all the cell tests in one
@@ -493,6 +493,13 @@ class IPyNbCell:
         # after code is sent for execution, the kernel sends a message on
         # the shell channel. Timeout if no message received.
         timed_out_this_run = False
+
+        if timeout is None:
+            if t := self.options.get("timeout"):
+                timeout = t
+            else:
+                timeout = DEFAULT_CELL_TIMEOUT
+        assert timeout is not None
 
         # Poll the shell channel to get a message
         try:
@@ -618,7 +625,9 @@ class IPyNbCell:
                 out["evalue"] = reply["evalue"]
                 out["traceback"] = reply["traceback"]
                 outs.append(out)
-                if raises := self.options.get("raises"):
+                if self.options.get("allow_failure", False):
+                    continue
+                elif raises := self.options.get("raises"):
                     if out["ename"] != raises:
                         raise NbCellError(
                             f"Expected exception of type {raises}, got {out['ename']}",
@@ -665,7 +674,7 @@ class IPyNbCell:
         #     self.diff_number_outputs(outs, self.cell.outputs)
         #     failed = True
         failed = False
-        if self.options.get("check", True) and not unrun:
+        if self.options.get("check_output", True) and not unrun:
             if not self.compare_outputs(outs, coalesce_streams(self.cell.outputs)):
                 failed = True
 
