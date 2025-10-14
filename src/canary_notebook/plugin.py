@@ -15,18 +15,20 @@ from collections import defaultdict
 from queue import Empty
 from typing import Any
 
+import _canary.plugins.builtin.runtests as runtests
 import canary
-from _canary.util.time import time_in_seconds
 
 # for reading notebook files
 import nbformat
 import yaml
+from _canary.util.logging import EMIT
+from _canary.util.time import time_in_seconds
 from nbformat import NotebookNode
 
 from .kernel import CURRENT_ENV_KERNEL_NAME
 from .kernel import RunningKernel
 
-logging = canary.logging
+logger = canary.get_logger(__name__)
 colorize = canary.color.colorize
 
 DEFAULT_KERNEL_STARTUP_TIMEOUT = 60
@@ -38,7 +40,7 @@ def canary_addoption(parser: canary.Parser) -> None:
     def addoption(name, **kwargs):
         parser.add_argument(
             f"--notebook-{name}",
-            dest=f"nb_{name.replace('-', '_')}",
+            dest=f"canary_notebook_{name.replace('-', '_')}",
             group="canary notebook",
             command="run",
             **kwargs,
@@ -102,15 +104,17 @@ config_file_schema = canary.schema.Schema(
 
 @canary.hookimpl
 def canary_configure(config: canary.Config):
-    if config.getoption("nb_kernel_name") and config.getoption("nb_current_env"):
+    if config.getoption("canary_notebook_kernel_name") and config.getoption(
+        "canary_notebook_current_env"
+    ):
         raise ValueError(
             "options '--notebook-current-env' and '--notebook-kernel-name' are mutually exclusive."
         )
-    if file := config.getoption("nb_config"):
+    if file := config.getoption("canary_notebook_config"):
         if not os.path.isabs(file):
             file = os.path.join(config.invocation_dir, file)
         if not os.path.exists(file):
-            f = config.getoption("nb_config")
+            f = config.getoption("canary_notebook_config")
             raise FileNotFoundError(f)
         with open(file, "r") as fh:
             data = yaml.safe_load(fh)
@@ -130,7 +134,11 @@ def canary_generator(root: str, path: str | None) -> "IPyNbTestGenerator | None"
 def find_comment_markers(cellsource: str) -> dict[str, Any]:
     """Look through the cell source for comments which affect notebook's behaviour"""
     known_comment_markers: tuple[str, ...] = (
-        "skip", "allow_failure", "check_output", "timeout", "raises",
+        "skip",
+        "allow_failure",
+        "check_output",
+        "timeout",
+        "raises",
     )
     markers: dict[str, Any] = {}
     for line in cellsource.splitlines():
@@ -214,10 +222,10 @@ class IPyNbTestCase(canary.TestCase):
     @staticmethod
     def start_kernel(file: str, kernelspec: dict[str, Any]) -> RunningKernel:
         name: str
-        if canary.config.getoption("nb_current_env"):
+        if canary.config.getoption("canary_notebook_current_env"):
             name = CURRENT_ENV_KERNEL_NAME
-        elif canary.config.getoption("nb_kernel_name"):
-            name = canary.config.getoption("nb_kernel_name")
+        elif canary.config.getoption("canary_notebook_kernel_name"):
+            name = canary.config.getoption("canary_notebook_kernel_name")
         else:
             name = kernelspec.get("name", "python")
         timeout: float = DEFAULT_KERNEL_STARTUP_TIMEOUT
@@ -230,7 +238,7 @@ class IPyNbTestCase(canary.TestCase):
         # Read through the specified notebooks and load the data
         # (which is in json format)
         cells: list[IPyNbCell] = []
-        compare_outputs = not canary.config.getoption("nb_dont_compare_outputs")
+        compare_outputs = not canary.config.getoption("canary_notebook_dont_compare_outputs")
         sanitize_patterns = self.read_sanitize_patterns()
         cell_num = 0
         for cell in nb.cells:
@@ -278,10 +286,10 @@ class IPyNbTestCase(canary.TestCase):
         self.stdout.write(f"==> {len(cells)} cells to execute\n")
         self.stdout.flush()
         for w in ws:
-            logging.warning(str(w.message), file=self.stderr)
+            logger.warning(str(w.message))
         self.stderr.flush()
-        if summary := self.job_submission_summary(qrank, qsize, attempt):
-            logging.emit(summary + f" [{len(cells)} cells]\n")
+        if summary := runtests.job_start_summary(self, qrank=qrank, qsize=qsize):
+            logger.log(EMIT, summary + f" [{len(cells)} cells]\n")
         try:
             with canary.filesystem.working_dir(self.execution_directory):
                 with self.rc_environ():
@@ -306,10 +314,10 @@ class IPyNbTestCase(canary.TestCase):
         self.stdout.flush()
         self.returncode = 0 if not errors else 1
         self.stop = time.time()
-        if summary := self.job_completion_summary(qrank, qsize, attempt):
+        if summary := runtests.job_finish_summary(self, qrank=qrank, qsize=qsize):
             if errors:
                 summary += f" [{success} cells pass, {errors} fail]"
-            logging.emit(summary + "\n")
+            logger.log(EMIT, summary + "\n")
 
 
 class IPyNbCell:
