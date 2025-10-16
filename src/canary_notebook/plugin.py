@@ -15,13 +15,11 @@ from collections import defaultdict
 from queue import Empty
 from typing import Any
 
-import _canary.plugins.builtin.runtests as runtests
 import canary
 
 # for reading notebook files
 import nbformat
 import yaml
-from _canary.util.logging import EMIT
 from _canary.util.time import time_in_seconds
 from nbformat import NotebookNode
 
@@ -288,8 +286,6 @@ class IPyNbTestCase(canary.TestCase):
         for w in ws:
             logger.warning(str(w.message))
         self.stderr.flush()
-        if summary := runtests.job_start_summary(self, qrank=qrank, qsize=qsize):
-            logger.log(EMIT, summary + f" [{len(cells)} cells]\n")
         try:
             with canary.filesystem.working_dir(self.execution_directory):
                 with self.rc_environ():
@@ -314,10 +310,6 @@ class IPyNbTestCase(canary.TestCase):
         self.stdout.flush()
         self.returncode = 0 if not errors else 1
         self.stop = time.time()
-        if summary := runtests.job_finish_summary(self, qrank=qrank, qsize=qsize):
-            if errors:
-                summary += f" [{success} cells pass, {errors} fail]"
-            logger.log(EMIT, summary + "\n")
 
 
 class IPyNbCell:
