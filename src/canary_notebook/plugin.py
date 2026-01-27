@@ -5,15 +5,17 @@
 """canary ipython plugin"""
 
 import argparse
+import datetime
 import hashlib
 import io
 import os
 import re
-import time
 import warnings
 from collections import defaultdict
+from pathlib import Path
 from queue import Empty
 from typing import Any
+from typing import ClassVar
 
 import canary
 
@@ -117,16 +119,31 @@ def canary_configure(config: canary.Config):
         with open(file, "r") as fh:
             data = yaml.safe_load(fh)
         data = config_file_schema.validate(data)
-        scope = canary.ConfigScope("notebook", file, data)
-        config.push_scope(scope)
+        config.add_section(name="notebook", schema=config_file_schema)
+        config.set("notebook", data)
 
 
 @canary.hookimpl
-def canary_generator(root: str, path: str | None) -> "IPyNbTestGenerator | None":
-    """Returns an implementation of AbstractTestGenerator"""
-    if IPyNbTestGenerator.matches(root if path is None else path):
-        return IPyNbTestGenerator(root, path=path)
+def canary_runtest_launcher(case: "canary.TestCase") -> "NotebookLauncher | None":
+    if case.file.suffix == ".ipynb":
+        return NotebookLauncher()
     return None
+
+
+@canary.hookimpl
+def canary_collectstart(collector: canary.Collector) -> None:
+    collector.add_generator(IPyNbTestGenerator)
+
+
+@canary.hookimpl
+def canary_collect_modifyitems(collector: canary.Collector) -> None:
+    checkpoint_files: list[tuple[str, str]] = []
+    for root, path in collector.iter_files():
+        file = Path(os.path.join(root, path))
+        if ".ipynb_checkpoints" in file.parts:
+            checkpoint_files.append((root, path))
+    for root, path in checkpoint_files:
+        collector.remove_file(root, path)
 
 
 def find_comment_markers(cellsource: str) -> dict[str, Any]:
@@ -161,16 +178,17 @@ class IPyNbTestGenerator(canary.AbstractTestGenerator):
     in the notebook for testing.
     """
 
+    file_patterns: ClassVar[tuple[str, ...]] = ("*.ipynb",)
+
     def __init__(self, root: str, path: str | None = None) -> None:
         super().__init__(root, path=path)
 
-    @staticmethod
-    def matches(path: str) -> bool:
-        return path.endswith(".ipynb")
-
-    def lock(self, on_options: list[str] | None = None) -> list[canary.TestCase]:
-        case = IPyNbTestCase(file_root=self.root, file_path=self.path)
-        return [case]
+    def lock(self, on_options: list[str] | None = None) -> list[canary.ResolvedSpec]:
+        kwargs: dict[str, Any] = {}
+        kwargs["file_root"] = Path(self.root)
+        kwargs["file_path"] = Path(self.path)
+        kwargs["keywords"] = self.keywords()
+        return [canary.ResolvedSpec(**kwargs)]
 
     def keywords(self) -> list[str]:
         return ["jupyter", "notebook"]
@@ -180,17 +198,17 @@ class IPyNbTestGenerator(canary.AbstractTestGenerator):
         file.write(f"--- {self.name} ------------\n")
         file.write(f"File: {self.file}\n")
         file.write(f"Keywords: {', '.join(self.keywords())}\n")
-        case: IPyNbTestCase = self.lock(on_options=on_options)[0]  # type: ignore
-        nb = nbformat.read(case.file, as_version=4)
-        cells = case.get_cells(nb)
+        spec = self.lock(on_options=on_options)[0]  # type: ignore
+        nb = nbformat.read(spec.file, as_version=4)
+        l = NotebookLauncher()
+        cells = l.get_cells(nb)
         n = len(cells)
         file.write(f"1 test case with {n} cell{'s' if n > 1 else ''}")
         return file.getvalue()
 
 
-class IPyNbTestCase(canary.TestCase):
-    def __init__(self, file_root: str | None = None, file_path: str | None = None, **kwds) -> None:
-        super().__init__(file_root=file_root, file_path=file_path, keywords=["notebook", "jupyter"])
+class NotebookLauncher(canary.Launcher):
+    def __init__(self) -> None:
         self.timed_out: bool = False
         self.skip_compare: list[str] = [
             "metadata",
@@ -212,13 +230,8 @@ class IPyNbTestCase(canary.TestCase):
             patterns.update({item["regex"]: item["replace"] for item in items})
         return patterns
 
-    @property
-    def execution_directory(self) -> str:
-        """Directory where the test is executed."""
-        return os.path.dirname(self.file)
-
     @staticmethod
-    def start_kernel(file: str, kernelspec: dict[str, Any]) -> RunningKernel:
+    def start_kernel(file: Path, kernelspec: dict[str, Any]) -> RunningKernel:
         name: str
         if canary.config.getoption("canary_notebook_current_env"):
             name = CURRENT_ENV_KERNEL_NAME
@@ -227,7 +240,7 @@ class IPyNbTestCase(canary.TestCase):
         else:
             name = kernelspec.get("name", "python")
         timeout: float = DEFAULT_KERNEL_STARTUP_TIMEOUT
-        if user_defined_timeout := canary.config.get("config:timeout:nb-kernel-startup"):
+        if user_defined_timeout := canary.config.get("config:run:timeout:nb-kernel-startup"):
             timeout = user_defined_timeout
         kernel = RunningKernel(name, cwd=os.path.dirname(file), startup_timeout=timeout)
         return kernel
@@ -262,62 +275,48 @@ class IPyNbTestCase(canary.TestCase):
                 cell_num += 1
         return cells
 
-    def setup(self, on_options: list[str] | None = None) -> None:
-        # we've already checked that --notebook-current-env and
-        # --notebook-kernel-name were not both supplied
-        # Iterate over the cells in the notebook
-        canary.filesystem.mkdirp(self.working_directory)
-        canary.filesystem.force_symlink(
-            self.file, os.path.join(self.working_directory, os.path.basename(self.file))
-        )
-
-    def run(self, qsize: int = 1, qrank: int = 0, attempt: int = 0) -> None:
-        self.start = time.time()
-        timeout = canary.config.get("config:timeout:nb-cell")
-        nb = nbformat.read(self.file, as_version=4)
-        kernel = self.start_kernel(self.file, nb.metadata.get("kernelspec", {}))
+    def run(self, case: "canary.TestCase") -> int:
+        logger.debug(f"Starting {case.display_name()} on pid {os.getpid()}")
+        timeout = canary.config.get("config:run:timeout:nb-cell")
+        nb = nbformat.read(case.file, as_version=4)
+        kernel = self.start_kernel(case.file, nb.metadata.get("kernelspec", {}))
         with warnings.catch_warnings(record=True) as ws:
             cells = self.get_cells(nb)
-        self.stdout.write(f"==> Running {self.display_name}\n")
-        self.stdout.write(f"==> Working directory: {self.working_directory}\n")
-        self.stdout.write(f"==> Execution directory: {self.execution_directory}\n")
-        self.stdout.write(f"==> {len(cells)} cells to execute\n")
-        self.stdout.flush()
+        prefix = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S.%f")
+        with case.workspace.openfile(case.stdout, "a") as fp:
+            fp.write(f"[{prefix}] Running {case.display_name()}\n")
+            fp.write(f"[{prefix}] Working directory: {case.workspace.dir}\n")
+            fp.write(f"[{prefix}] Execution directory: {case.file.parent}\n")
+            fp.write(f"[{prefix}] {len(cells)} cells to execute\n")
         for w in ws:
             logger.warning(str(w.message))
-        self.stderr.flush()
+        errors: int = 0
         try:
-            with canary.filesystem.working_dir(self.execution_directory):
-                with self.rc_environ():
-                    errors = 0
-                    for cell in cells:
-                        try:
-                            cell.execute(kernel, timeout=timeout)
-                        except Exception as e:
-                            if not errors:
-                                self.status.set("failed", e.args[0])
-                            msg = cell.repr_failure(e)
-                            self.stderr.write(msg + "\n")
-                            self.stderr.flush()
-                            errors += 1
+            with canary.filesystem.working_dir(case.file.parent):
+                for cell in cells:
+                    try:
+                        cell.execute(kernel, timeout=timeout)
+                    except Exception as e:
+                        msg = cell.repr_failure(e)
+                        f = case.stdout or case.stdout
+                        with case.workspace.openfile(f, "a") as fp:
+                            fp.write(msg + "\n")
+                        errors += 1
         finally:
             if kernel.is_alive():
                 kernel.stop()
-        if not errors:
-            self.status.set("success")
         success = len(cells) - errors
-        self.stdout.write(f"==> {len(cells)} total cells, {success} cells pass, {errors} fail\n")
-        self.stdout.flush()
-        self.returncode = 0 if not errors else 1
-        self.stop = time.time()
+        with case.workspace.openfile(case.stdout, "a") as fp:
+            fp.write(f"[{prefix}] {len(cells)} total cells, {success} cells pass, {errors} fail\n")
+        logger.debug(f"Finished {case.display_name()}")
+        return 1 if errors else 0
 
 
 class IPyNbCell:
-    # def __init__(self, name, parent, cell_num, cell, options):
     def __init__(
         self,
         name: str,
-        parent: IPyNbTestCase,
+        parent: NotebookLauncher,
         cell_num: int,
         cell,
         options: dict[str, Any],
@@ -341,10 +340,12 @@ class IPyNbCell:
             width: int = 88
             msg = io.StringIO()
             msg.write("=" * width)
-            msg.write("\n@*R{Notebook cell execution failed}\n")
-            msg.write("@*B{Cell %d: %s\nInput:}\n%s\n" % (exc.cell_num, str(exc), exc.source))
+            msg.write("\n[bold red]Notebook cell execution failed[/]\n")
+            msg.write(
+                "[bold blue]Cell %d: %s\nInput:[/]\n%s\n" % (exc.cell_num, str(exc), exc.source)
+            )
             if exc.inner_traceback:
-                msg.write("@*B{Traceback}:%s\n" % exc.inner_traceback)
+                msg.write("[bold blue]Traceback[/]:%s\n" % exc.inner_traceback)
             return colorize(msg.getvalue())
         else:
             return "canary-notebook plugin exception: %s" % str(exc)
@@ -407,11 +408,15 @@ class IPyNbCell:
         test_keys = set(testing_outs)
 
         if ref_keys - test_keys:
-            msg = "@*R{Missing output fields from running code: %s}" % (ref_keys - test_keys)
+            msg = "[bold red]Missing output fields from running code: %s[/]" % (
+                ref_keys - test_keys
+            )
             self.comparison_traceback.append(colorize(msg))
             return False
         elif test_keys - ref_keys:
-            msg = "@*R{Unexpected output fields from running code: %s}" % (test_keys - ref_keys)
+            msg = "[bold red]Unexpected output fields from running code: %s[/]" % (
+                test_keys - ref_keys
+            )
             self.comparison_traceback.append(colorize(msg))
             return False
 
@@ -426,17 +431,19 @@ class IPyNbCell:
             if len(test_values) != len(ref_values):
                 # The number of outputs for a specific MIME type differs
                 msg = io.StringIO()
-                msg.write('@*B{dissimilar number of outputs for key "%s"}' % key)
-                msg.write("@*R{<<<<<<<<<<<< Reference outputs from ipynb file:}")
+                msg.write('[bold blue]dissimilar number of outputs for key "%s"[/]' % key)
+                msg.write("[bold red]<<<<<<<<<<<< Reference outputs from ipynb file:[/]")
                 self.comparison_traceback.append(colorize(msg.getvalue()))
                 for val in ref_values:
                     self.comparison_traceback.append(_trim_base64(val))
                 self.comparison_traceback.append(
-                    colorize("@*R{============ disagrees with newly computed (test) output:}")
+                    colorize(
+                        "[bold red]============ disagrees with newly computed (test) output:[/]"
+                    )
                 )
                 for val in test_values:
                     self.comparison_traceback.append(_trim_base64(val))
-                self.comparison_traceback.append(colorize("@*R{>>>>>>>>>>>>}"))
+                self.comparison_traceback.append(colorize("[bold red]>>>>>>>>>>>>[/]"))
                 return False
 
             for ref_out, test_out in zip(ref_values, test_values):
@@ -453,17 +460,17 @@ class IPyNbCell:
         if isinstance(right, str):
             right = _trim_base64(right)
 
-        self.comparison_traceback.append(colorize("@*B{ mismatch '%s'}" % key))
+        self.comparison_traceback.append(colorize("[bold blue] mismatch '%s'[/]" % key))
         # Fallback repr:
         self.comparison_traceback.append(
-            colorize("@*R{  <<<<<<<<<<<< Reference output from ipynb file:}")
+            colorize("[bold red]  <<<<<<<<<<<< Reference output from ipynb file:[/]")
         )
         self.comparison_traceback.append(_indent(left))
         self.comparison_traceback.append(
-            colorize("@*R{  ============ disagrees with newly computed (test) output:}")
+            colorize("[bold red]  ============ disagrees with newly computed (test) output:[/]")
         )
         self.comparison_traceback.append(_indent(right))
-        self.comparison_traceback.append(colorize("@*R{  >>>>>>>>>>>>}"))
+        self.comparison_traceback.append(colorize("[bold red]  >>>>>>>>>>>>[/]"))
 
     """ *****************************************************
         ***************************************************** """
