@@ -1,6 +1,6 @@
 # Canary Notebook: A Testing Extension for Jupyter Notebooks
 
-`canary-notebook` is a [canary](https://canary-wm.readthedocs.io/en/production/)
+`canary-notebook` is a [canary](https://canary-wm.readthedocs.io)
 extension, inspired by [pytest-nbval](https://github.com/nteract/nbval), that
 tests execution of Jupyter notebooks.
 
