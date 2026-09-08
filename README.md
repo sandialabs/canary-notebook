@@ -1,48 +1,128 @@
 # Canary Notebook: A Testing Extension for Jupyter Notebooks
 
-`canary-notebook` is a [canary](https://canary-wm.readthedocs.io/en/production/) extension, inspired by the [pytest-nbval](https://github.com/nteract/nbval), that tests execution of Jupyter notebooks.
+`canary-notebook` is a [canary](https://canary-wm.readthedocs.io/en/production/)
+extension, inspired by [pytest-nbval](https://github.com/nteract/nbval), that
+tests execution of Jupyter notebooks.
 
 ## How It Works
 
-The `canary-notebook` extension finds and executes Jupyter notebooks.  Each notebook is treated as a single test. When executed, cells in the notebook are run in sequential order.  If a cell fails during execution, the overall test is marked as failed; however, the execution of subsequent cells continues.
+Each `.ipynb` file is treated as a **single test case**. All code cells are
+executed sequentially in one live Jupyter kernel. If any cell raises an
+unhandled exception the test fails, but execution of subsequent cells continues
+so all errors are visible in one run.
 
-`canary-notebook` uses `nbval`'s Jupyter kernel interface which interacts with the IPython Kernel through both a `shell` and an `iopub` socket. The `shell` is responsible for executing the cells in the notebook by sending requests to the Kernel, while the `iopub` socket facilitates the retrieval of output messages. The messages received from the Kernel are organized into dictionaries containing various information, such as execution timestamps, cell data types, cell types, Kernel status, and username, among other details.
+Cell behavior is controlled by `# [key: value]` comment markers (see
+[Cell markers](#cell-markers) below). Outputs can be compared against the
+values stored in the notebook file, with optional regex-based sanitization for
+non-deterministic content.
 
 ## Installation
 
-To install Canary Notebook, you can use pip:
-
 ```console
-python3 -m pip install git+https://github.com/sandialabs/canary-notebook.git
+pip install canary-notebook
 ```
 
-to install the latest version:
+Or from source:
 
 ```console
-git clone git@cee-gitlab.sandia.gov:sandialabs/canary-notebook
+git clone https://github.com/sandialabs/canary-notebook.git
 cd canary-notebook
-python3 -m pip install [-e] .
+pip install [-e] .
 ```
 
 ## Usage
 
 ```console
-canary run [options]
-  [--notebook-config NOTEBOOK_CONFIG]
-  [--notebook-current-env | --notebook-kernel-name NOTEBOOK_KERNEL_NAME]
-  [--notebook-cell-timeout NOTEBOOK_CELL_TIMEOUT]
-  [--notebook-kernel-startup-timeout NOTEBOOK_KERNEL_STARTUP_TIMEOUT]
-  path [path...]
+canary run [options] path [path...]
+
+Notebook options:
+  --notebook-config FILE
+  --notebook-current-env
+  --notebook-kernel-name NAME
+  --notebook-cell-timeout T
+  --notebook-kernel-startup-timeout T
+  --notebook-dont-compare-outputs
+```
+
+Run a single notebook:
+
+```console
+canary run path/to/notebook.ipynb
+```
+
+Use the current Python environment's kernel instead of the one stored in the notebook:
+
+```console
+canary run --notebook-current-env path/to/notebook.ipynb
+```
+
+Disable output comparison globally:
+
+```console
+canary run --notebook-dont-compare-outputs path/to/notebook.ipynb
+```
+
+Query the plugin's capability data (requires canary-wm):
+
+```console
+canary query -c ext.notebook.overview
+canary query -c ext.notebook.cell_markers
+canary query -c ext.notebook.cli_options
+```
+
+## Cell markers
+
+Cell behavior can be overridden with `# [key: value]` comment markers at the
+top of a cell:
+
+| Marker | Effect |
+|---|---|
+| `# [skip: true]` | Do not execute this cell |
+| `# [check_output: false]` | Execute but do not compare outputs |
+| `# [check_output: true]` | Force output comparison (overrides global flag) |
+| `# [allow_failure: true]` | Cell errors do not fail the test |
+| `# [raises: ExceptionType]` | Cell must raise the named exception |
+| `# [timeout: T]` | Per-cell timeout (seconds or duration string e.g. `5m`) |
+
+Example:
+
+```python
+# [raises: ValueError]
+raise ValueError("expected error")
+```
+
+## Output comparison
+
+By default, cell outputs are compared against outputs stored in the notebook
+file. The following fields are always excluded: `metadata`, `traceback`,
+`execution_count`, widget view IDs, `image/png`, `image/jpeg`.
+
+To sanitize non-deterministic output, pass a YAML config file:
+
+```yaml
+# sanitize.yaml
+notebook:
+  sanitize:
+    - regex: '\d{4}-\d{2}-\d{2}'
+      replace: 'DATE'
+    - regex: '0x[0-9a-fA-F]+'
+      replace: '0xADDR'
+```
+
+```console
+canary run --notebook-config sanitize.yaml path/to/notebook.ipynb
 ```
 
 ## Acknowledgments
 
-`canary-notebook` is inspired by and borrows components from the [`pytest-nbval`](https://github.com/nteract/nbval) pytest extension.
-
+`canary-notebook` is inspired by and borrows kernel infrastructure from
+[`pytest-nbval`](https://github.com/nteract/nbval).
 
 ## License
 
-Canary is distributed under the terms of the MIT license, see [LICENSE](https://github.com/sandialabs/canary-notebook/blob/main/LICENSE) and [COPYRIGHT](https://github.com/sandialabs/canary-notebook/blob/main/COPYRIGHT).
+`canary-notebook` is distributed under the terms of the MIT license. See
+[LICENSE](https://github.com/sandialabs/canary-notebook/blob/main/LICENSE) and
+[COPYRIGHT](https://github.com/sandialabs/canary-notebook/blob/main/COPYRIGHT).
 
 SPDX-License-Identifier: MIT
 
