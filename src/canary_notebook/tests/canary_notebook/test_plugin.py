@@ -38,7 +38,7 @@ from canary_notebook.plugin import transform_streams_for_comparison
 # Helpers
 # ---------------------------------------------------------------------------
 
-SAMPLE_DIR = Path(__file__).parent.parent / "sample_notebooks"
+SAMPLE_DIR = Path(__file__).parent.parent.parent.parent.parent / "sample_notebooks"
 
 
 def _stream(name: str, text: str) -> NotebookNode:

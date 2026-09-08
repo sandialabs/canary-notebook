@@ -78,7 +78,7 @@ where = ["src"]
 ignore = "W009"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/canary_notebook/tests"]
 norecursedirs = "mock"
 addopts = "-ra --durations=10"
 cache_dir = ".cache/pytest"
