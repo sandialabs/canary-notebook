@@ -1,7 +1,7 @@
 [build-system]
 build-backend = "setuptools.build_meta"
 
-requires = [ "setuptools>=64", "setuptools-scm[toml]>=6.2.3" ]
+requires = [ "setuptools>=64" ]
 
 [project]
 name = "canary-notebook"
@@ -67,9 +67,11 @@ lint.ignore = [ "E731", "E741", "F841" ]
 module = "yaml"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "Queue"
-ignore_missing_imports = true
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"canary_notebook.data" = ["*.json"]
 
 [tool.check-wheel-contents]
 # W009: Wheel contains multiple toplevel library entries

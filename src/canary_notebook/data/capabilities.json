@@ -1,0 +1,93 @@
+{
+  "schema_version": "2.0.0",
+  "namespace": "notebook",
+  "capabilities": {
+    "overview": {
+      "summary": "The canary_notebook extension enables Jupyter notebooks (.ipynb files) to be discovered and executed as first-class canary test cases.",
+      "file_patterns": [
+        "*.ipynb"
+      ],
+      "generator": "IPyNbTestGenerator",
+      "launcher": "NotebookLauncher",
+      "keywords_added": ["jupyter", "notebook"],
+      "excluded_paths": [".ipynb_checkpoints/**"]
+    },
+    "execution_model": {
+      "summary": "Each notebook is a single test case. All code cells are executed sequentially in one live Jupyter kernel. If any cell raises an unhandled exception the test fails, but execution of subsequent cells continues.",
+      "cell_types_executed": ["code"],
+      "cell_types_skipped": ["markdown", "raw"],
+      "output_comparison": "Cell outputs (stdout, display_data, execute_result) are compared against outputs stored in the notebook file unless disabled globally or per-cell."
+    },
+    "cli_options": {
+      "summary": "All options are in the 'canary notebook' group and apply to the 'canary run' command.",
+      "options": {
+        "--notebook-config FILE": "YAML file with regex/replace pairs to sanitize cell outputs before comparison.",
+        "--notebook-current-env": "Use the Python kernel from the same environment that canary was launched from instead of the kernel stored in the notebook.",
+        "--notebook-kernel-name NAME": "Use a named Jupyter kernel instead of the one stored in the notebook.",
+        "--notebook-cell-timeout T": "Maximum time in seconds for a single cell to execute (alias for --timeout nb-cell:T). Default: 2000.",
+        "--notebook-kernel-startup-timeout T": "Maximum time in seconds to wait for the kernel to start (alias for --timeout nb-kernel-startup:T). Default: 60.",
+        "--notebook-dont-compare-outputs": "Disable output comparison for all cells globally."
+      },
+      "mutual_exclusion": "--notebook-current-env and --notebook-kernel-name are mutually exclusive."
+    },
+    "cell_markers": {
+      "summary": "Cell behavior is controlled by comment markers in the cell source. Markers use the syntax '# [key: value]'.",
+      "markers": {
+        "[skip: true]": "Do not execute this cell.",
+        "[check_output: false]": "Execute the cell but do not compare its output against the stored reference.",
+        "[check_output: true]": "Force output comparison for this cell even when --notebook-dont-compare-outputs is set globally.",
+        "[allow_failure: true]": "An error raised by this cell does not fail the test; execution continues.",
+        "[raises: ExceptionType]": "This cell must raise the named exception type. Any other exception (or no exception) fails the test.",
+        "[timeout: T]": "Per-cell execution timeout override. Accepts seconds (numeric) or duration strings (e.g. '5m')."
+      },
+      "marker_location": "Markers must appear in comment lines at or near the top of the cell source."
+    },
+    "sanitize_config": {
+      "summary": "A YAML config file (--notebook-config) can provide regex/replace pairs to normalize non-deterministic output before comparison.",
+      "schema": {
+        "notebook": {
+          "sanitize": [
+            {"regex": "<regex string>", "replace": "<replacement string>"}
+          ]
+        }
+      },
+      "example_file": "sample_notebooks/sanitize_defaults.yaml"
+    },
+    "output_skip_list": {
+      "summary": "These output fields are always excluded from output comparison regardless of cell markers.",
+      "always_skipped": [
+        "metadata",
+        "traceback",
+        "prompt_number",
+        "output_type",
+        "name",
+        "execution_count",
+        "application/vnd.jupyter.widget-view+json",
+        "image/png",
+        "image/jpeg"
+      ],
+      "rationale": "These fields are either non-deterministic (widget model IDs, image blobs) or structural (output_type, execution_count)."
+    },
+    "kernel_selection": {
+      "summary": "The kernel used to execute the notebook is resolved in priority order.",
+      "priority_order": [
+        "1. --notebook-current-env flag: use the Python env that launched canary (CURRENT_ENV_KERNEL_NAME sentinel).",
+        "2. --notebook-kernel-name NAME: use the named Jupyter kernel.",
+        "3. Kernel name stored in the notebook's kernelspec metadata.",
+        "4. Default fallback: 'python'."
+      ]
+    },
+    "timeout_keys": {
+      "nb-cell": "Per-cell execution timeout in seconds. Readable via canary config as 'config:run:timeout:nb-cell'. Default: 2000.",
+      "nb-kernel-startup": "Kernel startup timeout in seconds. Readable via canary config as 'config:run:timeout:nb-kernel-startup'. Default: 60."
+    },
+    "sample_notebooks": {
+      "minimal_example.ipynb": "Single print() cell; the simplest valid notebook test.",
+      "sample_notebook.ipynb": "Demonstrates check_output, skip, and matplotlib (images skipped via skip_compare).",
+      "exceptions.ipynb": "Demonstrates [raises: ExceptionType], [allow_failure: true], and [skip: true].",
+      "test_coalesce.ipynb": "Tests stdout/stderr stream coalescing including sys.stderr.flush() edge cases.",
+      "latex-example.ipynb": "Tests sympy LaTeX rendering with [check_output: false] for non-deterministic output.",
+      "sanitize_defaults.yaml": "Example sanitize config normalizing datestamps, timestamps, and memory addresses."
+    }
+  }
+}

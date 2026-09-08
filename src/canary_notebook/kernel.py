@@ -49,15 +49,10 @@ import logging
 import os
 import warnings
 from pprint import pformat
+from queue import Empty
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.environ["JUPYTER_PLATFORM_DIRS"] = "1"
-
-
-try:
-    from Queue import Empty
-except:
-    from queue import Empty
 
 # Kernel for jupyter notebooks
 import ipykernel.kernelspec
@@ -126,10 +121,11 @@ class RunningKernel(object):
         Stores the active kernel process and its manager.
         """
 
+        self._devnull = open(os.devnull, "w")
         self.km, self.kc = start_new_kernel(
             startup_timeout=startup_timeout,
             kernel_name=kernel_name,
-            stderr=open(os.devnull, "w"),
+            stderr=self._devnull,
             cwd=cwd,
         )
 
@@ -256,6 +252,8 @@ class RunningKernel(object):
         self.kc.stop_channels()
         self.km.shutdown_kernel(now=True)
         del self.km
+        if hasattr(self, "_devnull") and not self._devnull.closed:
+            self._devnull.close()
 
     @property
     def language(self):

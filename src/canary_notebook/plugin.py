@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""canary ipython plugin"""
+"""canary ipython notebook plugin"""
 
 import argparse
 import datetime
@@ -22,7 +22,6 @@ import canary
 # for reading notebook files
 import nbformat
 import yaml
-from _canary.util.time import time_in_seconds
 from nbformat import NotebookNode
 
 from .kernel import CURRENT_ENV_KERNEL_NAME
@@ -32,6 +31,8 @@ logger = canary.get_logger(__name__)
 colorize = canary.color.colorize
 
 DEFAULT_KERNEL_STARTUP_TIMEOUT = 60
+# 2000 s is intentionally large — "practically unlimited"; individual cells can
+# override via the [timeout: T] marker or --notebook-cell-timeout.
 DEFAULT_CELL_TIMEOUT = 2000
 
 
@@ -124,7 +125,21 @@ def canary_configure(config: canary.Config):
 
 
 @canary.hookimpl
-def canary_runtest_launcher(case: "canary.TestCase") -> "NotebookLauncher | None":
+def canary_capabilities() -> dict[str, Any] | None:
+    from _canary.util.query_data import load_query_data
+
+    return load_query_data("canary_notebook.data", "capabilities.json")
+
+
+@canary.hookimpl
+def canary_skills() -> dict[str, Any] | None:
+    from _canary.util.query_data import load_query_data
+
+    return load_query_data("canary_notebook.data", "skills.json")
+
+
+@canary.hookimpl
+def canary_runtest_launcher(case: "canary.Job") -> "NotebookLauncher | None":
     if case.file.suffix == ".ipynb":
         return NotebookLauncher()
     return None
@@ -166,7 +181,7 @@ def find_comment_markers(cellsource: str) -> dict[str, Any]:
                     continue
                 value = yaml.safe_load(value)
                 if type in ("timeout",):
-                    value = time_in_seconds(value)
+                    value = canary.time.time_in_seconds(value)
                 markers[type] = value
     return markers
 
@@ -275,7 +290,7 @@ class NotebookLauncher(canary.Launcher):
                 cell_num += 1
         return cells
 
-    def run(self, case: "canary.TestCase") -> int:
+    def run(self, case: "canary.Job") -> int:
         logger.debug(f"Starting {case.display_name()} on pid {os.getpid()}")
         timeout = canary.config.get("config:run:timeout:nb-cell")
         nb = nbformat.read(case.file, as_version=4)
@@ -298,7 +313,7 @@ class NotebookLauncher(canary.Launcher):
                         cell.execute(kernel, timeout=timeout)
                     except Exception as e:
                         msg = cell.repr_failure(e)
-                        f = case.stdout or case.stdout
+                        f = case.stdout or case.stderr
                         with case.workspace.openfile(f, "a") as fp:
                             fp.write(msg + "\n")
                         errors += 1
@@ -332,7 +347,6 @@ class IPyNbCell:
         self.output_timeout = 5
         self.sanitize_patterns: dict[str, str] = sanitize_patterns or {}
         self.skip_compare = skip_compare or []
-        # Disable colors if we have been explicitly asked to
 
     def repr_failure(self, exc: BaseException) -> str:
         """called when self.runtest() raises an exception."""
@@ -584,15 +598,13 @@ class IPyNbCell:
                 continue
 
             # This message type is used to clear the output that is
-            # visible on the frontend
-            # elif msg_type == 'clear_output':
-            #     outs = []
-            #     continue
-
-            # elif (msg_type == 'clear_output'
-            #       and msg_type['execution_state'] == 'idle'):
-            #     outs = []
-            #     continue
+            # visible on the frontend.  Reset accumulated outputs for
+            # the current cell so comparisons are not contaminated with
+            # pre-clear output.
+            elif msg_type == "clear_output":
+                if not reply.get("wait", False):
+                    outs = []
+                continue
 
             # 'execute_result' is equivalent to a display_data message.
             # The object being displayed is passed to the display
@@ -662,9 +674,8 @@ class IPyNbCell:
                     )
 
             # any other message type is not expected
-            # should this raise an error?
             else:
-                print("unhandled iopub msg:", msg_type)
+                logger.debug("unhandled iopub msg: %s", msg_type)
 
         outs[:] = coalesce_streams(outs)
 
@@ -677,9 +688,6 @@ class IPyNbCell:
 
         # Compare if the outputs have the same number of lines
         # and throw an error if it fails
-        # if len(outs) != len(self.cell.outputs):
-        #     self.diff_number_outputs(outs, self.cell.outputs)
-        #     failed = True
         failed = False
         if self.options.get("check_output", True) and not unrun:
             if not self.compare_outputs(outs, coalesce_streams(self.cell.outputs)):
@@ -770,22 +778,6 @@ def transform_streams_for_comparison(outputs):
         else:
             new_outputs.append(output)
     return new_outputs
-
-
-def get_sanitize_patterns(string: str) -> list[str]:
-    """
-    *Arguments*
-
-    string:  str
-
-        String containing a list of regex-replace pairs as would be
-        read from a sanitize config file.
-
-    *Returns*
-
-    A list of (regex, replace) pairs.
-    """
-    return re.findall("^regex: (.*)$\n^replace: (.*)$", string, flags=re.MULTILINE)
 
 
 def hash_string(s: str) -> str:
