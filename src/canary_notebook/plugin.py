@@ -16,6 +16,7 @@ from pathlib import Path
 from queue import Empty
 from typing import Any
 from typing import ClassVar
+from typing import Sequence
 
 import canary
 
@@ -91,10 +92,18 @@ def canary_addoption(parser: canary.Parser) -> None:
 
 
 class TimeoutFlag(argparse.Action):
-    def __call__(self, parser, namespace, value, option_string=None):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
         timeouts = getattr(namespace, "timeouts", None) or {}
+        assert option_string is not None
         type = option_string.replace("--notebook-", "nb-").rstrip("-timeout")
-        timeouts[type] = float(value)
+        assert isinstance(values, str)
+        timeouts[type] = float(values)
         setattr(namespace, "timeouts", timeouts)
 
 
@@ -126,16 +135,12 @@ def canary_configure(config: canary.Config):
 
 @canary.hookimpl
 def canary_capabilities() -> dict[str, Any] | None:
-    from _canary.util.query_data import load_query_data
-
-    return load_query_data("canary_notebook.data", "capabilities.json")
+    return canary.load_query_data("canary_notebook.data", "capabilities.json")
 
 
 @canary.hookimpl
 def canary_skills() -> dict[str, Any] | None:
-    from _canary.util.query_data import load_query_data
-
-    return load_query_data("canary_notebook.data", "skills.json")
+    return canary.load_query_data("canary_notebook.data", "skills.json")
 
 
 @canary.hookimpl
@@ -213,7 +218,7 @@ class IPyNbTestGenerator(canary.AbstractTestGenerator):
         file.write(f"--- {self.name} ------------\n")
         file.write(f"File: {self.file}\n")
         file.write(f"Keywords: {', '.join(self.keywords())}\n")
-        spec = self.lock(on_options=on_options)[0]  # type: ignore
+        spec = self.lock(on_options=on_options)[0]
         nb = nbformat.read(spec.file, as_version=4)
         l = NotebookLauncher()
         cells = l.get_cells(nb)
