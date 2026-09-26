@@ -290,40 +290,42 @@ class NotebookLauncher(canary.Launcher):
                 cell_num += 1
         return cells
 
-    def run(self, case: "canary.Job") -> int:
-        logger.debug(f"Starting {case.display_name()} on pid {os.getpid()}")
+    def run(self, job: "canary.Job") -> int:
+        logger.debug(f"Starting {job.display_name()} on pid {os.getpid()}")
         timeout = canary.config.get("config:run:timeout:nb-cell")
-        nb = nbformat.read(case.file, as_version=4)
-        kernel = self.start_kernel(case.file, nb.metadata.get("kernelspec", {}))
+        nb = nbformat.read(job.file, as_version=4)
+        kernel = self.start_kernel(job.file, nb.metadata.get("kernelspec", {}))
         with warnings.catch_warnings(record=True) as ws:
             cells = self.get_cells(nb)
         prefix = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S.%f")
-        with case.workspace.openfile(case.stdout, "a") as fp:
-            fp.write(f"[{prefix}] Running {case.display_name()}\n")
-            fp.write(f"[{prefix}] Working directory: {case.workspace.dir}\n")
-            fp.write(f"[{prefix}] Execution directory: {case.file.parent}\n")
+        assert job.stdout is not None
+        with job.workspace.openfile(job.stdout, "a") as fp:
+            fp.write(f"[{prefix}] Running {job.display_name()}\n")
+            fp.write(f"[{prefix}] Working directory: {job.workspace.dir}\n")
+            fp.write(f"[{prefix}] Execution directory: {job.file.parent}\n")
             fp.write(f"[{prefix}] {len(cells)} cells to execute\n")
         for w in ws:
             logger.warning(str(w.message))
         errors: int = 0
         try:
-            with canary.filesystem.working_dir(case.file.parent):
+            with canary.filesystem.working_dir(job.file.parent):
                 for cell in cells:
                     try:
                         cell.execute(kernel, timeout=timeout)
                     except Exception as e:
                         msg = cell.repr_failure(e)
-                        f = case.stdout or case.stderr
-                        with case.workspace.openfile(f, "a") as fp:
+                        f = job.stdout or job.stderr
+                        assert f is not None
+                        with job.workspace.openfile(f, "a") as fp:
                             fp.write(msg + "\n")
                         errors += 1
         finally:
             if kernel.is_alive():
                 kernel.stop()
         success = len(cells) - errors
-        with case.workspace.openfile(case.stdout, "a") as fp:
+        with job.workspace.openfile(job.stdout, "a") as fp:
             fp.write(f"[{prefix}] {len(cells)} total cells, {success} cells pass, {errors} fail\n")
-        logger.debug(f"Finished {case.display_name()}")
+        logger.debug(f"Finished {job.display_name()}")
         return 1 if errors else 0
 
 
@@ -532,7 +534,7 @@ class IPyNbCell:
             timed_out_this_run = True
 
         # This list stores the output information for the entire cell
-        outs = []
+        outs: list[Any] = []
 
         # Now get the outputs from the iopub channel
         while True:

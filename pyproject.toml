@@ -6,7 +6,7 @@ requires = [ "setuptools>=64" ]
 [project]
 name = "canary-notebook"
 description = "A canary plugin for testing Jupyter notebooks"
-version = "0.1.0"
+version = "26.9.26"
 readme = "README.md"
 keywords = [ "test", "unittest" ]
 license = { "file" = "LICENSE" }
@@ -41,7 +41,7 @@ dependencies = [
     "pyyaml"
 ]
 
-optional-dependencies.dev = ["mypy", "ruff"]
+optional-dependencies.dev = ["mypy", "ruff", "ty"]
 
 # urls.Documentation = "https://canary-wm.readthedocs.io/en/production/"
 urls.Issues = "https://github.com/sandialabs/canary-notebook/issues"
@@ -84,3 +84,17 @@ addopts = "-ra --durations=10"
 cache_dir = ".cache/pytest"
 python_files = "*.py"
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.bandit]
+skips = [
+    "B101",  # ignore asserts
+    "B311",  # ignore warnings about random numbers
+    "B318",  # xml.dom.minidom.parse to parse XML
+    "B324",  # non-cryptographic hashes allowed (they are used to generate IDs only)
+    "B404",  # consider security risks when using subprocess module
+    "B406",  # xml.sax.saxutils to parse XML
+    "B408",  # allow use of xml parsers
+    "B603",
+    "B607", # start_process_with_partial_path"
+]
+exclude_dirs = []

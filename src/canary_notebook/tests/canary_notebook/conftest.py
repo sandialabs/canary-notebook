@@ -4,10 +4,9 @@
 
 import os
 
-import pytest
-
 import _canary.config
 import _canary.util.multiprocessing as mp
+import pytest
 
 mp.initialize()
 
