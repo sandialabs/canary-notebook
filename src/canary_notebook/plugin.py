@@ -788,7 +788,7 @@ def transform_streams_for_comparison(outputs):
 
 
 def hash_string(s: str) -> str:
-    return hashlib.md5(s.encode("utf8")).hexdigest()
+    return hashlib.md5(s.encode("utf8"), usedforsecurity=False).hexdigest()  # noqa: S324
 
 
 _base64 = re.compile(
