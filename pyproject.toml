@@ -1,4 +1,4 @@
-[build-system]
+p[build-system]
 build-backend = "setuptools.build_meta"
 
 requires = [ "setuptools>=64" ]
@@ -41,7 +41,7 @@ dependencies = [
     "pyyaml"
 ]
 
-optional-dependencies.dev = ["mypy", "ruff", "ty"]
+optional-dependencies.dev = ["mypy", "ruff", "ty", "pytest"]
 
 # urls.Documentation = "https://canary-wm.readthedocs.io/en/production/"
 urls.Issues = "https://github.com/sandialabs/canary-notebook/issues"
