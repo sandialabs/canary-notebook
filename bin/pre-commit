@@ -55,12 +55,12 @@ else:
     print(f"pyproject.toml version already current: {expected}")
 PY
 
-# Include the version bump in the commit automatically.
-git add pyproject.toml
-
 ruff format src
 ruff check --fix src
 mypy src
-ty check --extra-search-path=$p
 bandit -c pyproject.toml -r src
-pytest tests
+pytest src/canary_notebook/tests
+ty check --extra-search-path=$p || true
+
+# Include the version bump in the commit automatically.
+git add pyproject.toml

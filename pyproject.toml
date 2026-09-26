@@ -34,7 +34,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "canary-wm>=25.8.28",
+    "canary-wm @ git+https://github.com/sandialabs/canary.git",
     "jupyter_client",
     "nbformat",
     "ipykernel",
