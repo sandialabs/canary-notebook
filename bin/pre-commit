@@ -1,15 +1,5 @@
-#!/bin/bash
-
-set -e
-
-export CANARY_CACHE_DIR=/dev/null
-p=$(python3 -m site --user-site)
-
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
-cd $SCRIPT_DIR/..
-
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -55,11 +45,15 @@ else:
     print(f"pyproject.toml version already current: {expected}")
 PY
 
+export CANARY_CACHE_DIR=/dev/null
+
 ruff format src
 ruff check --fix src
 mypy src
 bandit -c pyproject.toml -r src
 pytest src/canary_notebook/tests
+
+p=$(python3 -m site --user-site)
 ty check --extra-search-path=$p || true
 
 # Include the version bump in the commit automatically.
